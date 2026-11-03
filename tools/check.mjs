@@ -4,8 +4,12 @@
  * have it, with agent-loop-studio's checker: built in a checkout given with
  * --studio (default ./agent-loop-studio). A project receives the framework's
  * base loops and roles too, so they are laid under this library for the check;
- * a name here never repeats one of the framework's. The library has no project
- * package, so its loops may declare only the framework's hook actions.
+ * a name here never repeats one of the framework's.
+ *
+ * A side's loops may use roles, loops and hook actions its projects' package
+ * provides, which this library does not hold: such a loop was checked whole in
+ * the project that contributed it, and is noted here rather than failed.
+ * `framework` loops may use only the framework's.
  */
 import fs from "node:fs";
 import os from "node:os";
@@ -36,5 +40,20 @@ try {
 } finally {
   fs.rmSync(merged, { recursive: true, force: true });
 }
-console.log(JSON.stringify({ repeated, reports: result.reports }, null, 2));
-process.exitCode = result.ok && !repeated.length ? 0 : 1;
+// A side's loop that names what only its package provides is noted, not failed.
+const PACKAGE_PROVIDED = /^unknown (role|loop|trigger) "/;
+const notes = [];
+let ok = true;
+for (const [side, report] of Object.entries(result.reports)) {
+  for (const loop of report.check) {
+    if (loop.ok) continue;
+    if (side !== "framework" && loop.defects.some((defect) => PACKAGE_PROVIDED.test(defect))) {
+      notes.push({ side, loop: loop.loop, checked_whole_only_in_a_project_of_this_side: loop.defects });
+      continue;
+    }
+    ok = false;
+  }
+  if (report.roles.some((role) => !role.ok)) ok = false;
+}
+console.log(JSON.stringify({ repeated, notes, reports: result.reports }, null, 2));
+process.exitCode = ok && !repeated.length ? 0 : 1;
