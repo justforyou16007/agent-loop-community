@@ -13,7 +13,7 @@ A project package adds this repository as a git submodule (at `agent-loop-commun
 
 ## Contributing
 
-Every contribution comes here. A project contributes when its owner decides to, with its `library-contribution` loop: it plans the loops and roles the project made (the ones no library gave it), blocks keys, tokens, machine paths and hidden data, runs the project's own check when it has one, and opens a pull request only once the owner has reviewed exactly what leaves. Maintainers review and merge.
+Every contribution comes here. A project contributes when its owner decides to, with its `library-contribution` loop: it plans the loops and roles the project made (the ones no library gave it), blocks keys, tokens and hidden data, warns about paths of the contributing machine, runs the project's own check when it has one, and opens a pull request only once the owner has reviewed exactly what leaves. Maintainers review and merge.
 
 Improvements are not contributions. When a project improves a loop or role a library gave it (its roles fixed from their trajectories, above all), its `upstream-optimization` loop sends the improvement back where the loop or role came from: to agent-loop-studio for the framework's base ones, to the package for a package's own, and here for this library's.
 
@@ -46,7 +46,7 @@ MIT licensed.
 
 **使用**：项目包把本仓库作为 git 子模块引用（放在 `agent-loop-community/`，版本由项目自己固定），并在 `project.json` 里写明用哪几端；安装器把本库 `framework` 下的流程和角色以及项目包所用各端的放进项目，此后归项目所有。直接从 agent-loop-studio 仓库在 Studio 里建的项目，则把本仓库克隆进那个框架仓库、放在 `agent-loop-community/` 下。Studio 会把本库的流程和项目自己的放在一起给你选。
 
-**贡献**：所有贡献都到这里。是否贡献由项目的 owner 决定，用项目的 `library-contribution` 流程：它整理出项目自己写的流程和角色（不是从哪个库拿到的），拦下密钥、token、本机路径和隐藏数据，项目有自查时先自查，并且只在 owner 审过要发出的确切内容后才开 PR；由维护者审核合并。
+**贡献**：所有贡献都到这里。是否贡献由项目的 owner 决定，用项目的 `library-contribution` 流程：它整理出项目自己写的流程和角色（不是从哪个库拿到的），拦下密钥、token 和隐藏数据，提醒其中出现的本机路径，项目有自查时先自查，并且只在 owner 审过要发出的确切内容后才开 PR；由维护者审核合并。
 
 **优化不是贡献**：项目改进了从某个库拿到的流程或角色（主要是根据轨迹修好的角色），由它的 `upstream-optimization` 流程把改进送回来源：框架的基础流程和角色回 agent-loop-studio，项目包自己的回项目包，本库的回到这里。
 
