@@ -1,17 +1,15 @@
 #!/usr/bin/env node
 /**
- * Check every loop and role of this library as a project of each side would
- * have it, with agent-loop-studio's checker: built in a checkout given with
- * --studio (default ./agent-loop-studio). A project receives the framework's
- * base loops and roles too, so they are laid under this library for the check; a
- * `framework` loop or role here of a framework one's name is a project's version
- * of it, which takes the framework's place, and is listed as such.
- *
- * A side's loops may use roles, loops and hook actions its projects' package
- * provides, which this library does not hold: such a loop was checked whole in
- * the project that contributed it, and is noted here rather than failed.
- * `framework` loops may use only the framework's.
+ * Check every project published here by starting a project from it the way the
+ * Studio does, with agent-loop-studio built in a checkout given with --studio
+ * (default ./agent-loop-studio): the framework's installer sets up a new
+ * project, the framework's own code gives it the published project's loops and
+ * roles and makes its task loop, with its values, the new project's; then the
+ * framework's loop and role checks run on that project. What a project started
+ * from nothing already has wrong is the framework's, not the published one's,
+ * and is left out.
  */
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -20,41 +18,87 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const at = process.argv.indexOf("--studio");
 const studio = path.resolve(at > 0 ? process.argv[at + 1] : path.join(root, "agent-loop-studio"));
-const checker = path.join(studio, "dist", "tools", "library-cli.js");
-if (!fs.existsSync(checker))
-  throw new Error(`Build agent-loop-studio first (npm ci && npm run build in ${studio}): ${checker} is missing.`);
-const { checkLibrary } = await import(pathToFileURL(checker).href);
+const tool = (name) => path.join(studio, "dist", "tools", name);
+const installer = path.join(studio, "distribution", "install-from-repo.mjs");
+for (const needed of [tool("workspace.js"), tool("loop-check.js"), tool("loops.js"), installer])
+  if (!fs.existsSync(needed))
+    throw new Error(`Build agent-loop-studio first (npm ci && npm run build in ${studio}): ${needed} is missing.`);
+const { applyExample } = await import(pathToFileURL(tool("workspace.js")).href);
+const { checkLoop, checkRoles } = await import(pathToFileURL(tool("loop-check.js")).href);
+const { listLoops } = await import(pathToFileURL(tool("loops.js")).href);
 
-const files = (dir) => (fs.existsSync(dir) ? fs.readdirSync(dir).filter((file) => !file.startsWith(".")) : []);
-const replacing = [];
-for (const kind of ["loops", "roles"])
-  for (const file of files(path.join(root, "library", kind, "framework")))
-    if (fs.existsSync(path.join(studio, "library", kind, "framework", file)))
-      replacing.push(`library/${kind}/framework/${file}: a project's version of the framework's, which takes its place`);
-
-const merged = fs.mkdtempSync(path.join(os.tmpdir(), "community-check-"));
-let result;
-try {
-  for (const library of [path.join(studio, "library"), path.join(root, "library")])
-    fs.cpSync(library, merged, { recursive: true, filter: (file) => path.basename(file) !== ".gitkeep" });
-  result = await checkLibrary(merged);
-} finally {
-  fs.rmSync(merged, { recursive: true, force: true });
-}
-// A side's loop that names what only its package provides is noted, not failed.
-const PACKAGE_PROVIDED = /^unknown (role|loop|trigger) "/;
-const notes = [];
-let ok = true;
-for (const [side, report] of Object.entries(result.reports)) {
-  for (const loop of report.check) {
-    if (loop.ok) continue;
-    if (side !== "framework" && loop.defects.some((defect) => PACKAGE_PROVIDED.test(defect))) {
-      notes.push({ side, loop: loop.loop, checked_whole_only_in_a_project_of_this_side: loop.defects });
-      continue;
-    }
-    ok = false;
+const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "agent-loop-community-check-"));
+/** A new project, installed as the Studio installs one. */
+const install = (name) => {
+  const project = path.join(workspace, name);
+  try {
+    execFileSync(process.execPath, [installer, "--role", "default", "--project", project], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+    });
+  } catch (error) {
+    throw new Error(`the framework's installer failed: ${String(error.stderr || error.message).trim()}`);
   }
-  if (report.roles.some((role) => !role.ok)) ok = false;
+  return project;
+};
+/** Every defect the framework's checks find in a project, one line each. */
+const defectsOf = async (project) => {
+  const lines = [];
+  for (const loop of listLoops(project)) {
+    const report = await checkLoop(project, loop);
+    if (report.stale) lines.push(`loop ${loop}: its script is stale, regenerate it from its definition`);
+    for (const defect of report.defects) lines.push(`loop ${loop}: ${defect}`);
+  }
+  for (const report of checkRoles(project))
+    for (const defect of report.defects) lines.push(`role ${report.role}: ${defect}`);
+  return lines;
+};
+const texts = (value) =>
+  Boolean(value) && [value.zh, value.en].every((text) => typeof text === "string" && text.trim());
+/** What a published project holds: its reference.json, its loops (definition and script) and its roles. */
+const BELONGS = [/^reference\.json$/, /^loops\/[a-z0-9][a-z0-9-]*\.(md|js)$/, /^roles\/[a-z0-9][a-z0-9-]*\.md$/];
+const filesIn = (dir, prefix = "") =>
+  fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
+    entry.isDirectory()
+      ? filesIn(path.join(dir, entry.name), `${prefix}${entry.name}/`)
+      : [`${prefix}${entry.name}`],
+  );
+
+const results = {};
+let ok = true;
+try {
+  const baseline = new Set(await defectsOf(install("started-from-nothing")));
+  const projectsDir = path.join(root, "projects");
+  for (const name of fs.readdirSync(projectsDir).sort()) {
+    const dir = path.join(projectsDir, name);
+    if (!fs.statSync(dir).isDirectory()) continue;
+    const problems = [];
+    for (const file of filesIn(dir))
+      if (!BELONGS.some((pattern) => pattern.test(file)))
+        problems.push(`${file} does not belong in a published project: only reference.json, loops/ and roles/ do`);
+    let reference = null;
+    try {
+      reference = JSON.parse(fs.readFileSync(path.join(dir, "reference.json"), "utf8"));
+    } catch {
+      problems.push("reference.json is missing or not JSON");
+    }
+    if (reference && (!texts(reference.title) || !texts(reference.description)))
+      problems.push("reference.json needs a title and a description, each in zh and en");
+    let started = null;
+    if (reference)
+      try {
+        const project = install(name);
+        started = applyExample(project, dir, "community");
+        for (const defect of await defectsOf(project)) if (!baseline.has(defect)) problems.push(defect);
+      } catch (error) {
+        problems.push(`a project cannot start from it: ${error.message}`);
+      }
+    if (problems.length) ok = false;
+    results[name] = { task_loop: started?.loop ?? null, files: started?.added.length ?? 0, problems };
+  }
+} finally {
+  fs.rmSync(workspace, { recursive: true, force: true });
 }
-console.log(JSON.stringify({ replacing, notes, reports: result.reports }, null, 2));
+console.log(JSON.stringify({ projects: results }, null, 2));
 process.exitCode = ok ? 0 : 1;

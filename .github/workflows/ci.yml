@@ -1,4 +1,4 @@
-name: Check the library
+name: Check the published projects
 
 on:
   push:
