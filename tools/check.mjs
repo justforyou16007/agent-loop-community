@@ -3,8 +3,9 @@
  * Check every loop and role of this library as a project of each side would
  * have it, with agent-loop-studio's checker: built in a checkout given with
  * --studio (default ./agent-loop-studio). A project receives the framework's
- * base loops and roles too, so they are laid under this library for the check;
- * a name here never repeats one of the framework's.
+ * base loops and roles too, so they are laid under this library for the check; a
+ * `framework` loop or role here of a framework one's name is a project's version
+ * of it, which takes the framework's place, and is listed as such.
  *
  * A side's loops may use roles, loops and hook actions its projects' package
  * provides, which this library does not hold: such a loop was checked whole in
@@ -25,11 +26,11 @@ if (!fs.existsSync(checker))
 const { checkLibrary } = await import(pathToFileURL(checker).href);
 
 const files = (dir) => (fs.existsSync(dir) ? fs.readdirSync(dir).filter((file) => !file.startsWith(".")) : []);
-const repeated = [];
+const replacing = [];
 for (const kind of ["loops", "roles"])
   for (const file of files(path.join(root, "library", kind, "framework")))
     if (fs.existsSync(path.join(studio, "library", kind, "framework", file)))
-      repeated.push(`library/${kind}/framework/${file}: the framework already has one of this name`);
+      replacing.push(`library/${kind}/framework/${file}: a project's version of the framework's, which takes its place`);
 
 const merged = fs.mkdtempSync(path.join(os.tmpdir(), "community-check-"));
 let result;
@@ -55,5 +56,5 @@ for (const [side, report] of Object.entries(result.reports)) {
   }
   if (report.roles.some((role) => !role.ok)) ok = false;
 }
-console.log(JSON.stringify({ repeated, notes, reports: result.reports }, null, 2));
-process.exitCode = ok && !repeated.length ? 0 : 1;
+console.log(JSON.stringify({ replacing, notes, reports: result.reports }, null, 2));
+process.exitCode = ok ? 0 : 1;
