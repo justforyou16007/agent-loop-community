@@ -1,0 +1,10 @@
+{
+  "name": "model-training",
+  "title": { "zh": "模型训练循环", "en": "Model training loop" },
+  "description": {
+    "zh": "一轮一轮地训练一个模型：先备好镜像和数据，用小规模跑通训练代码，再按生产规模训练并取回日志；出了问题就定位并分类，按类别去修（代码 bug 去上游找对应的 PR 再对齐到训练环境的版本，镜像问题回到镜像制作，还有性能和超参），修完再训练；训练跑完则挑 checkpoint、跑 benchmark，由你判断是否收工。镜像、数据、启动和评测的具体命令和路径由项目自己的环境提供，流程和角色里不写死。",
+    "en": "Train a model in attempts: get the image and the data ready, prove the training code runs at a small scale, then train at production scale and fetch the logs; when something breaks, locate it, classify it, and fix it by class (a code bug is matched against the upstream fix and aligned to the version the training environment pins, an image fault goes back to building the image, and performance and hyperparameters have their own paths), then train again; when a run finishes, pick the checkpoints worth benchmarking, benchmark them, and let the owner judge. The commands and paths for images, data, launching and benchmarking come from the project's own environment, never from the loops or roles."
+  },
+  "task_loop": "model-training",
+  "params": { "max_attempts": 3, "smoke_first": true, "benchmark_top_k": 2, "stop_after": "benchmark" }
+}
