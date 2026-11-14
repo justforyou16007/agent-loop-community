@@ -21,6 +21,7 @@ Where the data is, what prepared it and what the fields mean are the project's: 
 - `reason`: why the data is being validated — the first attempt, or the class a diagnosis gave (`data`), or the owner's words.
 - `notes`: what the owner or the last diagnosis said, verbatim.
 - `params`: this loop's parameter values.
+- `returned`: when the calling loop sent this loop's result back, what it could not use; the first validation redoes it.
 
 ## Steps
 
@@ -30,7 +31,11 @@ Where the data is, what prepared it and what the fields mean are the project's: 
 
 ## Bounds
 
-At most `max_rounds` rounds of validate and repair.
+At most `max_rounds` rounds of validate and repair; at most 2 send-backs in a row by any step.
+
+## Send back
+
+Every step checks what it receives against its role's Inputs. A step that cannot use an input sends it back (`send_back`) to the step that made it, which runs again with `returned` (that step and its problems); then the step runs again on what it makes. Repair may send the validation back to Validate; Record may send it back too. Validate may send the notes it was given back to the caller. Past 2 send-backs in a row, or when what a step cannot use is the loop's own input, the loop ends with `sent_back`: the step, where it sent the input, and the problems.
 
 ## Parameters
 

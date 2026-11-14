@@ -21,6 +21,7 @@ Where the checkout is, which version it pins and how a change to it reaches a ru
 
 - `{action: "apply", source, reference, local_change, cause}`: the component, the upstream reference, what the scout said the change here would be, and the cause being fixed.
 - The project's checkout of the training stack, and its own changes to it.
+- `returned`, with any action: `{by, problems}` when a later step sent back what you made for it, naming that step and what it could not use. Do the action again so those problems are gone, keeping what was right.
 
 ## Steps
 
@@ -35,6 +36,8 @@ Where the checkout is, which version it pins and how a change to it reaches a ru
 
 `{applied, files, conflicts, needs_image, summary}`: `applied` when the change is in place; `files` what was changed; `conflicts` one line per place it met one of this project's own changes, each saying what the two want; `needs_image` when the fix cannot work with the current image; `summary` what was changed and why it corrects the cause.
 
+- Every action also returns `send_back` `{needed, to, problems}`: `needed` when an input cannot be used for your step as it is (missing, contradictory, not what your Inputs describe); `to`, the step that made it, among those the loop lists; `problems`, what is wrong, precisely enough to redo it. Do no work on an input you send back.
+
 ## Writes
 
 The project's checkout of the training stack, only the files the fix requires; no configuration, no data, nothing under `memory/` or `.contrejour/`.
@@ -45,3 +48,4 @@ The project's checkout of the training stack, only the files the fix requires; n
 - It changed only what the fix required: no file in `files` was unrelated to the cause.
 - `needs_image` was right both ways: no run was launched against an image that could not carry the fix, and no image was rebuilt for a fix that did not need it.
 - A conflict with the project's own change was reported, never overwritten.
+- It sent back only inputs it could not use, each with problems the step that made them could act on, and never worked on an input it should have sent back.

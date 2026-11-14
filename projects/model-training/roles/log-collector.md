@@ -16,6 +16,7 @@ Where a run's logs and metrics are, how to fetch them and where they belong in t
 
 - `{action: "collect", run_id, log_file}`: the run whose record to fetch, or empty for the project's most recent one, and its log when the caller knows it.
 - The project's own way of fetching logs and metrics.
+- `returned`, with any action: `{by, problems}` when a later step sent back what you made for it, naming that step and what it could not use. Do the action again so those problems are gone, keeping what was right.
 
 ## Steps
 
@@ -29,6 +30,8 @@ Where a run's logs and metrics are, how to fetch them and where they belong in t
 
 `{log_file, metrics_file, errors, last_step, summary}`: `log_file` and `metrics_file` where the record now is in the project; `errors` one line per error found, each saying which log and which rank; `last_step` the last step reached; `summary` what the run's record shows in a few lines.
 
+- Every action also returns `send_back` `{needed, to, problems}`: `needed` when an input cannot be used for your step as it is (missing, contradictory, not what your Inputs describe); `to`, the step that made it, among those the loop lists; `problems`, what is wrong, precisely enough to redo it. Do no work on an input you send back.
+
 ## Writes
 
 The run's logs and metrics under the project's own log path; nothing else, and it never edits what it fetched.
@@ -38,3 +41,4 @@ The run's logs and metrics under the project's own log path; nothing else, and i
 - What it reported fetched was there and complete: no rank's log missing where the project keeps several.
 - The errors it listed were in the logs, verbatim, and it did not stop at the first.
 - It left interpretation to the analyst: its `summary` says what the record shows, not what caused it.
+- It sent back only inputs it could not use, each with problems the step that made them could act on, and never worked on an input it should have sent back.

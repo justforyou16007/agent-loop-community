@@ -23,6 +23,7 @@ The class is what the next attempt acts on, so it is deliberately about where th
 - `scale`: `small` or `production`, which says how much the run proves.
 - `notes`: what the owner said, verbatim.
 - `params`: this loop's parameter values.
+- `returned`: when the calling loop sent this loop's result back, what it could not use; the collection redoes it.
 
 ## Steps
 
@@ -33,7 +34,11 @@ The class is what the next attempt acts on, so it is deliberately about where th
 
 ## Bounds
 
-At most `max_rounds` rounds of analysis and reproduction.
+At most `max_rounds` rounds of analysis and reproduction; at most 2 send-backs in a row by any step.
+
+## Send back
+
+Every step checks what it receives against its role's Inputs. A step that cannot use an input sends it back (`send_back`) to the step that made it, which runs again with `returned` (that step and its problems); then the step runs again on what it makes. Localize may send the collected logs back to Collect; Reproduce and Record may send the diagnosis back to Localize. Collect may send the run it was given back to the caller. Past 2 send-backs in a row, or when what a step cannot use is the loop's own input, the loop ends with `sent_back`: the step, where it sent the input, and the problems.
 
 ## Parameters
 

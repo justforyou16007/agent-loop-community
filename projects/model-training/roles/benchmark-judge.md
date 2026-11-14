@@ -21,6 +21,7 @@ What the target is comes from `task.md`; what the project had before comes from 
 
 - `{action: "judge", results, settings, report_file, run_id}`: the results, the settings they were obtained under, the raw report, and the run they came from.
 - `task.md` for the target, and the project's record of earlier results.
+- `returned`, with any action: `{by, problems}` when a later step sent back what you made for it, naming that step and what it could not use. Do the action again so those problems are gone, keeping what was right.
 
 ## Steps
 
@@ -34,6 +35,8 @@ What the target is comes from `task.md`; what the project had before comes from 
 
 `{meets_target, best, comparison, regressions, summary}`: `meets_target` whether the task's target is met on comparable evidence; `best` the candidate, named as the project names it; `comparison` one line per comparison with the numbers and the settings; `regressions` one line per thing that went backwards; `summary` what the result means and what it does not settle, in a few lines.
 
+- Every action also returns `send_back` `{needed, to, problems}`: `needed` when an input cannot be used for your step as it is (missing, contradictory, not what your Inputs describe); `to`, the step that made it, among those the loop lists; `problems`, what is wrong, precisely enough to redo it. Do no work on an input you send back.
+
 ## Writes
 
 Nothing.
@@ -43,3 +46,4 @@ Nothing.
 - A target it called met held up when the model was used for the task.
 - It reported regressions that later mattered, rather than only the target's metric.
 - It never ranked candidates on a difference inside the suite's noise, and never compared results from different settings as if they were comparable.
+- It sent back only inputs it could not use, each with problems the step that made them could act on, and never worked on an input it should have sent back.

@@ -78,48 +78,120 @@ const reproduce = typeof params.reproduce === "boolean" ? params.reproduce : tru
 const runId = input.run_id || "";
 const scale = input.scale || "production";
 const notes = input.notes || "";
+// Send back (the definition's Send back section): a step that cannot use an input names the step that
+// made it (`send_back.to`); that step runs again with `returned`, then the step runs again on what it
+// makes. At most SEND_BACKS times in a row; past that, or for the loop's own input (`caller`), the loop
+// ends with `sent_back`.
+const SEND_BACKS = 2;
+const sending = (schema, to) => ({
+  ...schema,
+  properties: {
+    ...schema.properties,
+    send_back: {
+      type: "object",
+      properties: {
+        needed: { type: "boolean" },
+        to: { type: "string", enum: to },
+        problems: { type: "array", items: { type: "string" } },
+      },
+      required: ["needed", "to", "problems"],
+    },
+  },
+  required: [...schema.required, "send_back"],
+});
+const step = async (name, run, redo = {}) => {
+  for (let returns = 0; ; returns += 1) {
+    const out = await run();
+    const back = out && out.send_back;
+    if (!back || !back.needed) return out;
+    const again = redo[back.to];
+    if (!again || returns >= SEND_BACKS)
+      return { sent_back: { by: name, to: back.to, problems: back.problems } };
+    const remade = await again({ by: name, problems: back.problems });
+    if (remade && (remade.sent_back || remade.waiting)) return remade;
+  }
+};
 
-// Step 1
+// Step 1: a result the calling loop sent back is what the collection redoes.
 phase("Collect");
-const collected = await agent(
-  JSON.stringify({ action: "collect", run_id: runId, log_file: input.log_file || "" }),
-  { agentType: "log-collector", schema: COLLECTED, phase: "Collect" },
-);
+const collect = (back) =>
+  agent(
+    JSON.stringify({ action: "collect", run_id: runId, log_file: input.log_file || "", returned: back }),
+    { agentType: "log-collector", schema: sending(COLLECTED, ["caller"]), phase: "Collect" },
+  );
+let collected = await step("log-collector:collect", () => collect(input.returned || null));
+if (collected.sent_back) return { reproduced: false, sent_back: collected.sent_back };
+const recollect = async (back) => {
+  phase("Collect");
+  const again = await step("log-collector:collect", () => collect(back));
+  if (!again.sent_back) collected = again;
+  return again;
+};
 
 let analyzed = null;
 let reproducedIt = false;
 let how = "";
 let contradiction = "";
+let reanalyze = null;
 for (let round = 1; round <= maxRounds; round += 1) {
   // Step 2
   phase("Localize");
-  analyzed = await agent(
-    JSON.stringify({
-      action: "analyze",
-      run_id: runId,
-      scale,
-      log_file: collected.log_file,
-      metrics_file: collected.metrics_file,
-      errors: collected.errors,
-      round,
-      notes,
-      contradiction,
-    }),
-    { agentType: "failure-analyst", schema: ANALYZED, phase: "Localize" },
-  );
+  const known = contradiction;
+  const analyze = (back) =>
+    agent(
+      JSON.stringify({
+        action: "analyze",
+        run_id: runId,
+        scale,
+        log_file: collected.log_file,
+        metrics_file: collected.metrics_file,
+        errors: collected.errors,
+        round,
+        notes,
+        contradiction: known,
+        returned: back,
+      }),
+      {
+        agentType: "failure-analyst",
+        schema: sending(ANALYZED, ["log-collector:collect"]),
+        phase: "Localize",
+      },
+    );
+  analyzed = await step("failure-analyst:analyze", () => analyze(null), {
+    "log-collector:collect": recollect,
+  });
+  if (analyzed.sent_back) return { reproduced: false, sent_back: analyzed.sent_back };
+  reanalyze = async (back) => {
+    phase("Localize");
+    const again = await step("failure-analyst:analyze", () => analyze(back), {
+      "log-collector:collect": recollect,
+    });
+    if (!again.sent_back) analyzed = again;
+    return again;
+  };
   // Step 3: a diagnosis that is not already certain is worth confirming before it becomes a fix.
   if (!reproduce || analyzed.confidence === "high") break;
   phase("Reproduce");
-  const attempt = await agent(
-    JSON.stringify({
-      action: "reproduce",
-      category: analyzed.category,
-      cause: analyzed.cause,
-      evidence: analyzed.evidence,
-      report_file: analyzed.report_file,
-    }),
-    { agentType: "fault-reproducer", schema: REPRODUCED, phase: "Reproduce" },
+  const attempt = await step(
+    "fault-reproducer:reproduce",
+    () =>
+      agent(
+        JSON.stringify({
+          action: "reproduce",
+          category: analyzed.category,
+          cause: analyzed.cause,
+          evidence: analyzed.evidence,
+          report_file: analyzed.report_file,
+        }),
+        {
+          agentType: "fault-reproducer",
+          schema: sending(REPRODUCED, ["failure-analyst:analyze"]),
+          phase: "Reproduce",
+        },
+      ),
+    { "failure-analyst:analyze": reanalyze },
   );
+  if (attempt.sent_back) return { reproduced: false, sent_back: attempt.sent_back };
   reproducedIt = attempt.reproduced;
   how = attempt.how;
   if (!attempt.contradicts) break;
@@ -128,15 +200,25 @@ for (let round = 1; round <= maxRounds; round += 1) {
 
 // Step 4
 phase("Record");
-await agent(
-  JSON.stringify({
-    action: "record",
-    what: `the diagnosis of ${runId}: ${analyzed.category}`,
-    outcome: reproducedIt ? "worked" : "failed",
-    evidence: [analyzed.cause, analyzed.first_error, how, ...analyzed.evidence],
-  }),
-  { agentType: "project-memory", schema: RECORDED, phase: "Record" },
+const recorded = await step(
+  "project-memory:record",
+  () =>
+    agent(
+      JSON.stringify({
+        action: "record",
+        what: `the diagnosis of ${runId}: ${analyzed.category}`,
+        outcome: reproducedIt ? "worked" : "failed",
+        evidence: [analyzed.cause, analyzed.first_error, how, ...analyzed.evidence],
+      }),
+      {
+        agentType: "project-memory",
+        schema: sending(RECORDED, ["failure-analyst:analyze"]),
+        phase: "Record",
+      },
+    ),
+  { "failure-analyst:analyze": reanalyze },
 );
+if (recorded.sent_back) return { reproduced: false, sent_back: recorded.sent_back };
 return {
   category: analyzed.category,
   cause: analyzed.cause,
@@ -149,4 +231,4 @@ return {
   summary: `${analyzed.category}: ${analyzed.cause} (${analyzed.confidence} confidence, ${reproducedIt ? "reproduced" : "not reproduced"})`,
 };
 
-// contrejour-loop-definition-sha256: e26dac89b185b347a2797f750665630354d37b520080d029fcd606db14db57ca
+// contrejour-loop-definition-sha256: b8ea0eb4b0a93fbd35b78d7152e41a67713200710f17bbf9e0f2c13d89ab6b9a

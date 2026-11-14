@@ -16,6 +16,7 @@ What prepared the data, how to re-run it and where it writes are the project's: 
 
 - `{action: "repair", problems, report_file, round}`: the problems `data-validator` found, its report, and the round.
 - The project's own data preparation, and `task.md` for what the data must satisfy.
+- `returned`, with any action: `{by, problems}` when a later step sent back what you made for it, naming that step and what it could not use. Do the action again so those problems are gone, keeping what was right.
 
 ## Steps
 
@@ -28,6 +29,8 @@ What prepared the data, how to re-run it and where it writes are the project's: 
 
 `{changed, changes, left, summary}`: `changed` when anything was repaired; `changes` one line per repair with the command that did it; `left` one line per problem left, with why; `summary` what the data is now.
 
+- Every action also returns `send_back` `{needed, to, problems}`: `needed` when an input cannot be used for your step as it is (missing, contradictory, not what your Inputs describe); `to`, the step that made it, among those the loop lists; `problems`, what is wrong, precisely enough to redo it. Do no work on an input you send back.
+
 ## Writes
 
 Whatever the project's own preparation writes, under the project's own data paths; nothing under `memory/` or `.contrejour/`, and nothing used for evaluation.
@@ -37,3 +40,4 @@ Whatever the project's own preparation writes, under the project's own data path
 - A problem it reported repaired was gone when `data-validator` looked again.
 - It never dropped or invented rows to satisfy a count.
 - What it left came with a reason, not with silence.
+- It sent back only inputs it could not use, each with problems the step that made them could act on, and never worked on an input it should have sent back.

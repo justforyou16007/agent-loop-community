@@ -21,6 +21,7 @@ What the stages of a run are, which logs belong to which rank and what the proje
 
 - `{action: "analyze", run_id, scale, log_file, metrics_file, errors, round, notes, contradiction}`: the run, whether it was small or production scale, its collected record, the errors found in it, the round, what the owner said verbatim, and what a reproduction contradicted in the last round's analysis.
 - The project's own rules and the training code.
+- `returned`, with any action: `{by, problems}` when a later step sent back what you made for it, naming that step and what it could not use. Do the action again so those problems are gone, keeping what was right.
 
 ## Steps
 
@@ -35,6 +36,8 @@ What the stages of a run are, which logs belong to which rank and what the proje
 
 `{category, cause, first_error, where, evidence, confidence, report_file}`: `category` one of `code`, `image`, `data`, `performance`, `hyperparameters`, `environment`, `unknown`; `cause` what went wrong, in a few lines; `first_error` the earliest unexplained error, verbatim; `where` the rank and stage; `evidence` the lines and numbers it rests on; `confidence` `low`, `medium` or `high`; `report_file` where the report was written.
 
+- Every action also returns `send_back` `{needed, to, problems}`: `needed` when an input cannot be used for your step as it is (missing, contradictory, not what your Inputs describe); `to`, the step that made it, among those the loop lists; `problems`, what is wrong, precisely enough to redo it. Do no work on an input you send back.
+
 ## Writes
 
 Its report under the project's own report path; nothing else.
@@ -45,3 +48,4 @@ Its report under the project's own report path; nothing else.
 - The error it called first was not a consequence of an earlier one in the same logs.
 - `high` confidence was never given to a class a reproduction then contradicted.
 - It read every rank's log, not only the first.
+- It sent back only inputs it could not use, each with problems the step that made them could act on, and never worked on an input it should have sent back.

@@ -21,6 +21,7 @@ The recipe, the registry, the build command and how an image is run are the proj
 - `reason`: why the image is being made — the first attempt, or the class a diagnosis gave (`image`), or the owner's words.
 - `notes`: what the owner or the last diagnosis said, verbatim.
 - `params`: this loop's parameter values.
+- `returned`: when the calling loop sent this loop's result back, what it could not use; the first build redoes it.
 
 ## Steps
 
@@ -31,7 +32,11 @@ The recipe, the registry, the build command and how an image is run are the proj
 
 ## Bounds
 
-At most `max_rounds` rounds of build and verify.
+At most `max_rounds` rounds of build and verify; at most 2 send-backs in a row by any step.
+
+## Send back
+
+Every step checks what it receives against its role's Inputs. A step that cannot use an input sends it back (`send_back`) to the step that made it, which runs again with `returned` (that step and its problems); then the step runs again on what it makes. Verify may send the built image back to Build, which builds it again (when the loop only verifies, the image goes back to the caller); Record may send the verification back to Verify. Build may send the reason and notes it was given back to the caller. Past 2 send-backs in a row, or when what a step cannot use is the loop's own input, the loop ends with `sent_back`: the step, where it sent the input, and the problems.
 
 ## Parameters
 

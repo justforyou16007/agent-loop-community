@@ -35,7 +35,11 @@ Each stage is a loop of its own, so it can be run and tried alone; this loop onl
 
 ## Bounds
 
-At most `max_attempts` attempts; every attempt ends at the owner's review. Each child loop keeps its own bounds.
+At most `max_attempts` attempts; every attempt ends at the owner's review. Each child loop keeps its own bounds. At most 2 send-backs in a row by any step.
+
+## Send back
+
+Every step checks what it receives against what it needs. A step that cannot use an input sends it back to the step that made it, which runs again with `returned` (that step and its problems); then the step runs again on what it makes. Most steps here are child loops, and a child loop that cannot use what it was given sends it back to the loop that gave it: Diagnosis and Checkpoints send this attempt's run back to the child loop that made it (`training-smoke` or `training-run`), which runs again with `returned`; Benchmark sends the checkpoints back to Checkpoints; Fix sends the diagnosis back to Diagnosis; Record may send what it was given back to the child loop that gave it. Image, Data, the small-scale check and the training run work from the owner's words and the last diagnosis, which nothing here can make again, so what they send back ends the loop. Past 2 send-backs in a row, or when what a step cannot use is the loop's own input, the loop ends with `sent_back`: the step, where it sent the input, and the problems.
 
 ## Parameters
 

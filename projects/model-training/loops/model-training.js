@@ -49,6 +49,53 @@ const topK = Number.isInteger(params.benchmark_top_k) ? params.benchmark_top_k :
 const stopAfter = typeof params.stop_after === "string" && params.stop_after
   ? params.stop_after
   : "benchmark";
+// Send back (the definition's Send back section): a step that cannot use an input names the step that
+// made it (`send_back.to`); that step runs again with `returned`, then the step runs again on what it
+// makes. At most SEND_BACKS times in a row; past that, or for the loop's own input (`caller`), the loop
+// ends with `sent_back`.
+const SEND_BACKS = 2;
+const sending = (schema, to) => ({
+  ...schema,
+  properties: {
+    ...schema.properties,
+    send_back: {
+      type: "object",
+      properties: {
+        needed: { type: "boolean" },
+        to: { type: "string", enum: to },
+        problems: { type: "array", items: { type: "string" } },
+      },
+      required: ["needed", "to", "problems"],
+    },
+  },
+  required: [...schema.required, "send_back"],
+});
+const step = async (name, run, redo = {}) => {
+  for (let returns = 0; ; returns += 1) {
+    const out = await run();
+    const back = out && out.send_back;
+    if (!back || !back.needed) return out;
+    const again = redo[back.to];
+    if (!again || returns >= SEND_BACKS)
+      return { sent_back: { by: name, to: back.to, problems: back.problems } };
+    const remade = await again({ by: name, problems: back.problems });
+    if (remade && (remade.sent_back || remade.waiting)) return remade;
+  }
+};
+// A child loop is a step too: when it sends back what it was given (`sent_back.to` is `caller`), `redo`
+// makes it again and the child loop runs again, at most SEND_BACKS times; what it sent back past that,
+// or about its own steps, ends this loop with `sent_back` too.
+const child = async (name, run, redo) => {
+  for (let returns = 0; ; returns += 1) {
+    const out = await run();
+    const back = out && out.sent_back;
+    if (!back) return out;
+    if (!redo || back.to !== "caller" || returns >= SEND_BACKS)
+      return { sent_back: { by: `${name}/${back.by}`, to: back.to, problems: back.problems } };
+    const remade = await redo({ by: name, problems: back.problems });
+    if (remade && (remade.sent_back || remade.waiting)) return remade;
+  }
+};
 
 // What the attempts have established, so an attempt redoes only what its diagnosis blames.
 let imageReady = false;
@@ -60,17 +107,28 @@ let category = "";
 // The owner's words, or what the last fix did.
 let notes = "";
 let last = null;
+// A child loop's result a step could not use, past what could be made again here, ends the loop with it.
+const ending = (sent) => ({
+  done: false,
+  reason: "a step could not use what it was given",
+  ...(last || {}),
+  sent_back: sent,
+});
+const stopped = (result) => Boolean(result && (result.waiting || result.sent_back));
+// A child loop asked to make its result again gets what was sent back as `returned`.
+const withReturned = (args, back) => (back ? { ...args, returned: back } : args);
 
 for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
   // Step 1
   if (!imageReady || category === "image") {
     phase("Image");
-    const image = await workflow("training-image", {
-      reason: category || "first attempt",
-      notes,
-      answers,
-    });
+    const image = await child(
+      "training-image",
+      () => workflow("training-image", { reason: category || "first attempt", notes, answers }),
+      null,
+    );
     if (image && image.waiting) return image;
+    if (image && image.sent_back) return ending(image.sent_back);
     if (!image || !image.ready) {
       last = {
         attempt,
@@ -87,12 +145,13 @@ for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
   // Step 2
   if (!dataReady || category === "data") {
     phase("Data");
-    const data = await workflow("training-data", {
-      reason: category || "first attempt",
-      notes,
-      answers,
-    });
+    const data = await child(
+      "training-data",
+      () => workflow("training-data", { reason: category || "first attempt", notes, answers }),
+      null,
+    );
     if (data && data.waiting) return data;
+    if (data && data.sent_back) return ending(data.sent_back);
     if (!data || !data.ready) {
       last = {
         attempt,
@@ -106,14 +165,12 @@ for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     category = "";
   }
 
-  // Step 3: what this attempt ran, and what it left to read.
+  // Step 3: what this attempt ran, and what it left to read; `producer` is the child loop that made it.
   let evidence = null;
+  let producer = null;
   if (smokeFirst || changedSince || stopAfter === "small-scale") {
     phase("Small-scale check");
-    const smoke = await workflow("training-smoke", { notes, answers });
-    if (smoke && smoke.waiting) return smoke;
-    changedSince = false;
-    evidence = {
+    const smokeEvidence = (smoke) => ({
       scale: "small",
       run_id: smoke ? smoke.run_id : "",
       log_file: smoke ? smoke.log_file : "",
@@ -121,16 +178,28 @@ for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       checkpoints_dir: "",
       outcome: smoke && smoke.passed ? "completed" : "failed",
       summary: smoke ? smoke.summary : "",
+    });
+    const smokeRun = (back) => workflow("training-smoke", withReturned({ notes, answers }, back));
+    const smoke = await child("training-smoke", () => smokeRun(null), null);
+    if (smoke && smoke.waiting) return smoke;
+    if (smoke && smoke.sent_back) return ending(smoke.sent_back);
+    changedSince = false;
+    evidence = smokeEvidence(smoke);
+    producer = {
+      name: "training-smoke",
+      again: async (back) => {
+        phase("Small-scale check");
+        const remade = await child("training-smoke", () => smokeRun(back), null);
+        if (!stopped(remade)) evidence = smokeEvidence(remade);
+        return remade;
+      },
     };
   }
 
   // Step 4
   if ((!evidence || evidence.outcome === "completed") && stopAfter !== "small-scale") {
     phase("Training run");
-    const run = await workflow("training-run", { notes, answers });
-    // A run still going comes back as {waiting: "run"}: the session checks back and runs this loop again.
-    if (run && run.waiting) return run;
-    evidence = {
+    const runEvidence = (run) => ({
       scale: "production",
       run_id: run ? run.run_id : "",
       log_file: run ? run.log_file : "",
@@ -138,6 +207,21 @@ for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       checkpoints_dir: run ? run.checkpoints_dir : "",
       outcome: run ? run.outcome : "failed",
       summary: run ? run.summary : "",
+    });
+    const productionRun = (back) => workflow("training-run", withReturned({ notes, answers }, back));
+    const run = await child("training-run", () => productionRun(null), null);
+    // A run still going comes back as {waiting: "run"}: the session checks back and runs this loop again.
+    if (run && run.waiting) return run;
+    if (run && run.sent_back) return ending(run.sent_back);
+    evidence = runEvidence(run);
+    producer = {
+      name: "training-run",
+      again: async (back) => {
+        phase("Training run");
+        const remade = await child("training-run", () => productionRun(back), null);
+        if (!stopped(remade)) evidence = runEvidence(remade);
+        return remade;
+      },
     };
   }
   evidence = evidence || {
@@ -149,66 +233,134 @@ for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     outcome: "failed",
     summary: "nothing ran in this attempt",
   };
+  // A child loop that cannot use the run it is given has the loop that ran it make it again.
+  const remakeEvidence = producer ? producer.again : null;
 
   // Step 5
   let diagnosis = null;
+  let rediagnose = null;
   if (evidence.outcome !== "completed") {
     phase("Diagnosis");
-    const diagnosed = await workflow("training-diagnosis", {
-      run_id: evidence.run_id,
-      log_file: evidence.log_file,
-      scale: evidence.scale,
-      notes,
-      answers,
-    });
+    const diagnose = (back) =>
+      workflow(
+        "training-diagnosis",
+        withReturned(
+          {
+            run_id: evidence.run_id,
+            log_file: evidence.log_file,
+            scale: evidence.scale,
+            notes,
+            answers,
+          },
+          back,
+        ),
+      );
+    const take = (diagnosed) => {
+      diagnosis = diagnosed;
+      category = diagnosed && diagnosed.category ? diagnosed.category : "unknown";
+    };
+    const diagnosed = await child("training-diagnosis", () => diagnose(null), remakeEvidence);
     if (diagnosed && diagnosed.waiting) return diagnosed;
-    diagnosis = diagnosed;
-    category = diagnosed && diagnosed.category ? diagnosed.category : "unknown";
+    if (diagnosed && diagnosed.sent_back) return ending(diagnosed.sent_back);
+    take(diagnosed);
+    rediagnose = async (back) => {
+      phase("Diagnosis");
+      const remade = await child("training-diagnosis", () => diagnose(back), remakeEvidence);
+      if (!stopped(remade)) take(remade);
+      return remade;
+    };
   }
 
   // Step 6
   let selected = null;
   let benchmarked = null;
+  let rebenchmark = null;
   if (
     evidence.outcome === "completed" &&
     evidence.scale === "production" &&
     stopAfter === "benchmark"
   ) {
     phase("Checkpoints");
-    const sel = await workflow("checkpoint-select", {
-      run_id: evidence.run_id,
-      log_file: evidence.log_file,
-      metrics_file: evidence.metrics_file,
-      params: { top_k: topK },
-      answers,
-    });
+    const select = (back) =>
+      workflow(
+        "checkpoint-select",
+        withReturned(
+          {
+            run_id: evidence.run_id,
+            log_file: evidence.log_file,
+            metrics_file: evidence.metrics_file,
+            params: { top_k: topK },
+            answers,
+          },
+          back,
+        ),
+      );
+    const sel = await child("checkpoint-select", () => select(null), remakeEvidence);
     if (sel && sel.waiting) return sel;
+    if (sel && sel.sent_back) return ending(sel.sent_back);
     selected = sel;
+    const reselect = async (back) => {
+      phase("Checkpoints");
+      const remade = await child("checkpoint-select", () => select(back), remakeEvidence);
+      if (!stopped(remade)) selected = remade;
+      return remade;
+    };
     phase("Benchmark");
-    const bench = await workflow("model-benchmark", {
-      candidates: sel && sel.usable ? sel.usable : [],
-      run_id: evidence.run_id,
-      answers,
-    });
+    const benchmark = (back) =>
+      workflow(
+        "model-benchmark",
+        withReturned(
+          {
+            candidates: selected && selected.usable ? selected.usable : [],
+            run_id: evidence.run_id,
+            answers,
+          },
+          back,
+        ),
+      );
+    const bench = await child("model-benchmark", () => benchmark(null), reselect);
     if (bench && bench.waiting) return bench;
+    if (bench && bench.sent_back) return ending(bench.sent_back);
     benchmarked = bench;
+    rebenchmark = async (back) => {
+      phase("Benchmark");
+      const remade = await child("model-benchmark", () => benchmark(back), reselect);
+      if (!stopped(remade)) benchmarked = remade;
+      return remade;
+    };
   }
 
-  // Step 7
+  // Step 7: what Record cannot use is made again by the child loop that gave it.
   phase("Record");
-  await agent(
-    JSON.stringify({
-      action: "record",
-      what: `attempt ${attempt}: a ${evidence.scale} run, ${evidence.run_id}`,
-      outcome: evidence.outcome === "completed" ? "worked" : "failed",
-      evidence: [
-        evidence.summary,
-        diagnosis ? diagnosis.summary : "",
-        benchmarked ? benchmarked.summary : "",
-      ],
-    }),
-    { agentType: "project-memory", schema: RECORDED, phase: "Record" },
+  const sources = {};
+  if (producer) sources[producer.name] = producer.again;
+  if (rediagnose) sources["training-diagnosis"] = rediagnose;
+  if (rebenchmark) sources["model-benchmark"] = rebenchmark;
+  const targets = Object.keys(sources);
+  const recorded = await step(
+    "project-memory:record",
+    () =>
+      agent(
+        JSON.stringify({
+          action: "record",
+          what: `attempt ${attempt}: a ${evidence.scale} run, ${evidence.run_id}`,
+          outcome: evidence.outcome === "completed" ? "worked" : "failed",
+          evidence: [
+            evidence.summary,
+            diagnosis ? diagnosis.summary : "",
+            benchmarked ? benchmarked.summary : "",
+          ],
+        }),
+        {
+          agentType: "project-memory",
+          schema: sending(RECORDED, targets.length ? targets : ["caller"]),
+          phase: "Record",
+        },
+      ),
+    sources,
   );
+  if (recorded.waiting) return recorded;
+  if (recorded.sent_back) return ending(recorded.sent_back);
   last = { attempt, evidence, diagnosis, selected, benchmarked };
 
   // Step 8: the review names the run it is of, so a later attempt never takes an answer meant for this one.
@@ -237,17 +389,26 @@ for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     return { done: false, reason: "the owner stopped the work", ...last };
   notes = decided.notes;
 
-  // Step 9
+  // Step 9: a diagnosis the fix cannot use is made again before the fix runs again.
   if (category === "code" || category === "performance" || category === "hyperparameters") {
     phase("Fix");
-    const fixed = await workflow("training-fix", {
-      category,
-      cause: diagnosis ? diagnosis.cause : "",
-      report_file: diagnosis ? diagnosis.report_file : "",
-      notes,
-      answers,
-    });
+    const fix = (back) =>
+      workflow(
+        "training-fix",
+        withReturned(
+          {
+            category,
+            cause: diagnosis ? diagnosis.cause : "",
+            report_file: diagnosis ? diagnosis.report_file : "",
+            notes,
+            answers,
+          },
+          back,
+        ),
+      );
+    const fixed = await child("training-fix", () => fix(null), rediagnose);
     if (fixed && fixed.waiting) return fixed;
+    if (fixed && fixed.sent_back) return ending(fixed.sent_back);
     changedSince = true;
     notes = fixed && fixed.summary ? fixed.summary : notes;
     // A fix that only works with a different image sends the next attempt back to the image.
@@ -262,4 +423,4 @@ return {
   ...(last || {}),
 };
 
-// contrejour-loop-definition-sha256: 8e6225250cc89fcff0dca3ef11ac4e0ee7d1abdf72d653eaf61a5765de430f4f
+// contrejour-loop-definition-sha256: 2dd0ebd29157c8230251b31ac611caf3410b4e7992fc9a0153b508448d58095c

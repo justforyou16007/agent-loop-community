@@ -33,32 +33,83 @@ const params = input.params || {};
 const steps = Number.isInteger(params.steps) ? params.steps : 20;
 const maxRounds = Number.isInteger(params.max_rounds) ? params.max_rounds : 2;
 const notes = input.notes || "";
+// Send back (the definition's Send back section): a step that cannot use an input names the step that
+// made it (`send_back.to`); that step runs again with `returned`, then the step runs again on what it
+// makes. At most SEND_BACKS times in a row; past that, or for the loop's own input (`caller`), the loop
+// ends with `sent_back`.
+const SEND_BACKS = 2;
+const sending = (schema, to) => ({
+  ...schema,
+  properties: {
+    ...schema.properties,
+    send_back: {
+      type: "object",
+      properties: {
+        needed: { type: "boolean" },
+        to: { type: "string", enum: to },
+        problems: { type: "array", items: { type: "string" } },
+      },
+      required: ["needed", "to", "problems"],
+    },
+  },
+  required: [...schema.required, "send_back"],
+});
+const step = async (name, run, redo = {}) => {
+  for (let returns = 0; ; returns += 1) {
+    const out = await run();
+    const back = out && out.send_back;
+    if (!back || !back.needed) return out;
+    const again = redo[back.to];
+    if (!again || returns >= SEND_BACKS)
+      return { sent_back: { by: name, to: back.to, problems: back.problems } };
+    const remade = await again({ by: name, problems: back.problems });
+    if (remade && (remade.sent_back || remade.waiting)) return remade;
+  }
+};
 
-let ran = null;
-for (let round = 1; round <= maxRounds; round += 1) {
-  // Step 1
-  phase("Run");
-  ran = await agent(JSON.stringify({ action: "run", steps, round, notes }), {
+const run = (round, back) =>
+  agent(JSON.stringify({ action: "run", steps, round, notes, returned: back }), {
     agentType: "smoke-runner",
-    schema: RAN,
+    schema: sending(RAN, ["caller"]),
     phase: "Run",
   });
+let ran = null;
+for (let round = 1; round <= maxRounds; round += 1) {
+  // Step 1: a result the calling loop sent back is what the first run redoes.
+  phase("Run");
+  ran = await step("smoke-runner:run", () => run(round, round === 1 ? input.returned || null : null));
+  if (ran.sent_back) return { passed: false, sent_back: ran.sent_back };
   // Step 2: a run that never started says nothing about the code, so it is tried again.
   if (ran.verdict !== "did-not-start") break;
 }
+const rerun = async (back) => {
+  const again = await step("smoke-runner:run", () => run(maxRounds, back));
+  if (!again.sent_back) ran = again;
+  return again;
+};
 
-const passed = ran.verdict === "passed";
 // Step 3
 phase("Record");
-await agent(
-  JSON.stringify({
-    action: "record",
-    what: `a ${steps}-step run of the training code`,
-    outcome: passed ? "worked" : "failed",
-    evidence: [ran.verdict, ran.failed_at, ran.output],
-  }),
-  { agentType: "project-memory", schema: RECORDED, phase: "Record" },
+const recorded = await step(
+  "project-memory:record",
+  () =>
+    agent(
+      JSON.stringify({
+        action: "record",
+        what: `a ${steps}-step run of the training code`,
+        outcome: ran.verdict === "passed" ? "worked" : "failed",
+        evidence: [ran.verdict, ran.failed_at, ran.output],
+      }),
+      {
+        agentType: "project-memory",
+        schema: sending(RECORDED, ["smoke-runner:run"]),
+        phase: "Record",
+      },
+    ),
+  { "smoke-runner:run": rerun },
 );
+if (recorded.sent_back) return { passed: false, sent_back: recorded.sent_back };
+const passed = ran.verdict === "passed";
 return {
   passed,
   verdict: ran.verdict,
@@ -69,4 +120,4 @@ return {
     : `the small-scale run ${ran.verdict} at ${ran.failed_at}`,
 };
 
-// contrejour-loop-definition-sha256: bbf5a5fd9a348aa5942613eaebff5853a3c3bb182868e44f95a2269facc9fc38
+// contrejour-loop-definition-sha256: 216d195a53e995db41e31062b42451fbe433facd4356ec804a2744037506ec97

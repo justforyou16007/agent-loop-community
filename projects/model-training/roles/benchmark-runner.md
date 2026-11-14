@@ -20,6 +20,7 @@ Which suites the project has, how a checkpoint is served to them, where results 
 
 - `{action: "benchmark", candidates, suite, sample_limit, run_id, round}`: the candidates, which suite (empty for the project's own default), how many samples at most (0 for all), the run they came from, and the round.
 - The project's own benchmark suites and the way it serves a checkpoint.
+- `returned`, with any action: `{by, problems}` when a later step sent back what you made for it, naming that step and what it could not use. Do the action again so those problems are gone, keeping what was right.
 
 ## Steps
 
@@ -33,6 +34,8 @@ Which suites the project has, how a checkpoint is served to them, where results 
 
 `{results, completed, not_run, infrastructure_failure, report_file, settings}`: `results` one line per candidate with its numbers; `completed` when every candidate produced a number; `not_run` one line per candidate that did not, with why; `infrastructure_failure` when a cause was not the model's; `report_file` where the raw results are; `settings` the suite, version, samples, decoding and precision used.
 
+- Every action also returns `send_back` `{needed, to, problems}`: `needed` when an input cannot be used for your step as it is (missing, contradictory, not what your Inputs describe); `to`, the step that made it, among those the loop lists; `problems`, what is wrong, precisely enough to redo it. Do no work on an input you send back.
+
 ## Writes
 
 The raw results and its report under the project's own result path; no checkpoints, no configuration.
@@ -42,3 +45,4 @@ The raw results and its report under the project's own result path; no checkpoin
 - Every number it reported could be reproduced from the settings it recorded.
 - A candidate that could not be run never appeared as a bad score.
 - `infrastructure_failure` was set exactly when a rerun was the right answer.
+- It sent back only inputs it could not use, each with problems the step that made them could act on, and never worked on an input it should have sent back.

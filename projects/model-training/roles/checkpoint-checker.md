@@ -18,6 +18,7 @@ How a checkpoint is loaded, what the evaluation path expects and where the check
 
 - `{action: "check", candidates, run_id}`: the candidates to load and the run they came from.
 - The project's own way of loading a checkpoint for evaluation.
+- `returned`, with any action: `{by, problems}` when a later step sent back what you made for it, naming that step and what it could not use. Do the action again so those problems are gone, keeping what was right.
 
 ## Steps
 
@@ -30,6 +31,8 @@ How a checkpoint is loaded, what the evaluation path expects and where the check
 
 `{usable, broken, evidence}`: `usable` the candidates that loaded; `broken` those that did not; `evidence` one line per candidate with the command and what it reported.
 
+- Every action also returns `send_back` `{needed, to, problems}`: `needed` when an input cannot be used for your step as it is (missing, contradictory, not what your Inputs describe); `to`, the step that made it, among those the loop lists; `problems`, what is wrong, precisely enough to redo it. Do no work on an input you send back.
+
 ## Writes
 
 Nothing beyond what loading writes to the project's own temporary paths.
@@ -39,3 +42,4 @@ Nothing beyond what loading writes to the project's own temporary paths.
 - Nothing it called usable failed to load in the benchmark that followed.
 - Every broken candidate came with the real loading error, not a guess.
 - It loaded each one the way the evaluation path does, rather than in any way that worked.
+- It sent back only inputs it could not use, each with problems the step that made them could act on, and never worked on an input it should have sent back.

@@ -19,6 +19,7 @@ Where the configuration is, what the accelerators are, what the project's own pr
 
 - `{action: "plan", cause, report_file, notes}`: what the diagnosis found, its report, and what the owner said verbatim.
 - The run's collected metrics and logs, and the project's launch configuration and own profiling.
+- `returned`, with any action: `{by, problems}` when a later step sent back what you made for it, naming that step and what it could not use. Do the action again so those problems are gone, keeping what was right.
 
 ## Steps
 
@@ -33,6 +34,8 @@ Where the configuration is, what the accelerators are, what the project's own pr
 
 `{change, expected, basis, files, needs_image}`: `change` what was changed, in the configuration's own terms; `expected` the numbers it should produce; `basis` the measurements it rests on; `files` what was changed; `needs_image` when the change needs a different image (a kernel, a build flag, a runtime).
 
+- Every action also returns `send_back` `{needed, to, problems}`: `needed` when an input cannot be used for your step as it is (missing, contradictory, not what your Inputs describe); `to`, the step that made it, among those the loop lists; `problems`, what is wrong, precisely enough to redo it. Do no work on an input you send back.
+
 ## Writes
 
 The project's launch configuration; no training code, no data.
@@ -42,3 +45,4 @@ The project's launch configuration; no training code, no data.
 - The next run moved the numbers in `expected`, or the measurements in `basis` were shown wrong.
 - It changed one thing, so the next run's numbers could be attributed.
 - It kept off what the run learns, or said in `expected` that the result could change.
+- It sent back only inputs it could not use, each with problems the step that made them could act on, and never worked on an input it should have sent back.

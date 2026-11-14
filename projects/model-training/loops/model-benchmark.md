@@ -23,6 +23,7 @@ Which suite, how a checkpoint is served to it and where its results land are the
 - `candidates`: the checkpoints to benchmark; empty means the project's most recent usable one.
 - `run_id`: the run they came from.
 - `params`: this loop's parameter values.
+- `returned`: when the calling loop sent this loop's result back, what it could not use; the first benchmark redoes it.
 
 ## Steps
 
@@ -32,7 +33,11 @@ Which suite, how a checkpoint is served to it and where its results land are the
 
 ## Bounds
 
-At most `max_rounds` benchmark rounds.
+At most `max_rounds` benchmark rounds; at most 2 send-backs in a row by any step.
+
+## Send back
+
+Every step checks what it receives against its role's Inputs. A step that cannot use an input sends it back (`send_back`) to the step that made it, which runs again with `returned` (that step and its problems); then the step runs again on what it makes. Judge may send the benchmark's results back to Benchmark; Record may send the judgement back to Judge. Benchmark may send the candidates it was given back to the caller. Past 2 send-backs in a row, or when what a step cannot use is the loop's own input, the loop ends with `sent_back`: the step, where it sent the input, and the problems.
 
 ## Parameters
 

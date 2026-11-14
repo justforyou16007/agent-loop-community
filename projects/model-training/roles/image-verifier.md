@@ -17,6 +17,7 @@ What the training code needs you read from the code and the project's rules, not
 
 - `{action: "verify", image, digest, round}`: the image to verify and its digest; an empty `image` means the one the project records as current.
 - The training code's requirements, and the project's rules about devices and mounts.
+- `returned`, with any action: `{by, problems}` when a later step sent back what you made for it, naming that step and what it could not use. Do the action again so those problems are gone, keeping what was right.
 
 ## Steps
 
@@ -29,6 +30,8 @@ What the training code needs you read from the code and the project's rules, not
 
 `{ready, image, mismatches, evidence}`: `ready` when nothing is wrong; `image` the image verified; `mismatches` one line per thing wrong, each naming what was expected and what was there; `evidence` the command and output for each.
 
+- Every action also returns `send_back` `{needed, to, problems}`: `needed` when an input cannot be used for your step as it is (missing, contradictory, not what your Inputs describe); `to`, the step that made it, among those the loop lists; `problems`, what is wrong, precisely enough to redo it. Do no work on an input you send back.
+
 ## Writes
 
 Nothing.
@@ -38,3 +41,4 @@ Nothing.
 - An image it called ready did not fail the next run for a reason it could have checked.
 - Every mismatch it reported reproduced with the evidence it gave.
 - It ran its checks inside the image rather than reading the recipe.
+- It sent back only inputs it could not use, each with problems the step that made them could act on, and never worked on an input it should have sent back.

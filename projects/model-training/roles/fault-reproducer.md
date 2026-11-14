@@ -21,6 +21,7 @@ How to run anything at a small scale, and what the project allows, are the proje
 
 - `{action: "reproduce", category, cause, evidence, report_file}`: the class and cause the analyst gave, the evidence it rests on, and its report.
 - The project's own way of running something small.
+- `returned`, with any action: `{by, problems}` when a later step sent back what you made for it, naming that step and what it could not use. Do the action again so those problems are gone, keeping what was right.
 
 ## Steps
 
@@ -34,6 +35,8 @@ How to run anything at a small scale, and what the project allows, are the proje
 
 `{reproduced, how, output, contradicts}`: `reproduced` when the same failure happened; `how` what was run and what was changed from the real run; `output` the relevant output, verbatim; `contradicts` what the diagnosis got wrong, or empty when nothing contradicts it.
 
+- Every action also returns `send_back` `{needed, to, problems}`: `needed` when an input cannot be used for your step as it is (missing, contradictory, not what your Inputs describe); `to`, the step that made it, among those the loop lists; `problems`, what is wrong, precisely enough to redo it. Do no work on an input you send back.
+
 ## Writes
 
 Whatever its small run writes under the project's own run and log paths; no training code, no configuration.
@@ -43,3 +46,4 @@ Whatever its small run writes under the project's own run and log paths; no trai
 - A failure it reproduced was repaired by the fix the class called for.
 - A contradiction it reported changed the analysis that followed, and the new class held.
 - It reported what its one attempt did, rather than tuning the attempt until it matched.
+- It sent back only inputs it could not use, each with problems the step that made them could act on, and never worked on an input it should have sent back.

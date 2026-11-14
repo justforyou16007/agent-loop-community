@@ -18,6 +18,7 @@ The entry point, how a run is launched, what counts as a small scale here and wh
 
 - `{action: "run", steps, round, notes}`: how many optimizer steps to run, the round, and what the owner, the diagnosis or the last fix said verbatim.
 - The project's training entry point and its launch arguments.
+- `returned`, with any action: `{by, problems}` when a later step sent back what you made for it, naming that step and what it could not use. Do the action again so those problems are gone, keeping what was right.
 
 ## Steps
 
@@ -30,6 +31,8 @@ The entry point, how a run is launched, what counts as a small scale here and wh
 
 `{verdict, run_id, log_file, output, failed_at}`: `verdict` one of `passed`, `code-failed`, `did-not-start`; `run_id` the name this run was given; `log_file` its log; `output` the last lines that matter, verbatim; `failed_at` the stage and call it failed in, or empty when it passed.
 
+- Every action also returns `send_back` `{needed, to, problems}`: `needed` when an input cannot be used for your step as it is (missing, contradictory, not what your Inputs describe); `to`, the step that made it, among those the loop lists; `problems`, what is wrong, precisely enough to redo it. Do no work on an input you send back.
+
 ## Writes
 
 Whatever the run writes under the project's own run and log paths; no training code, no configuration.
@@ -39,3 +42,4 @@ Whatever the run writes under the project's own run and log paths; no training c
 - A run it called passed was not followed by a production run that failed in the first steps for a reason this scale would have shown.
 - Its verdict matched what the diagnosis later found: `did-not-start` was never a code bug, and `code-failed` was never an allocation problem.
 - The output it reported was the run's own, verbatim.
+- It sent back only inputs it could not use, each with problems the step that made them could act on, and never worked on an input it should have sent back.

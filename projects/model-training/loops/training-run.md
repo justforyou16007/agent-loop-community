@@ -19,6 +19,7 @@ Training for hours does not fit in one loop run, and a loop may not sleep throug
 
 - `notes`: what the owner, the last diagnosis or the last fix said, verbatim.
 - `params`: this loop's parameter values.
+- `returned`: when the calling loop sent this loop's result back, what it could not use; the launch redoes it.
 
 ## Steps
 
@@ -29,7 +30,11 @@ Training for hours does not fit in one loop run, and a loop may not sleep throug
 
 ## Bounds
 
-At most `max_checks` watches in one run of this loop; the session may run it again while the run goes on.
+At most `max_checks` watches in one run of this loop; the session may run it again while the run goes on; at most 2 send-backs in a row by any step.
+
+## Send back
+
+Every step checks what it receives against its role's Inputs. A step that cannot use an input sends it back (`send_back`) to the step that made it, which runs again with `returned` (that step and its problems); then the step runs again on what it makes. Watch may send the launch's report back to Launch; Collect may send what it was told of the run back to Watch, which checks the run again rather than launching it again; Record may send the collection back to Collect. Launch may send the notes it was given back to the caller. Past 2 send-backs in a row, or when what a step cannot use is the loop's own input, the loop ends with `sent_back`: the step, where it sent the input, and the problems.
 
 ## Parameters
 

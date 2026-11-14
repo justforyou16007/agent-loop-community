@@ -21,6 +21,7 @@ What the upstream repository is, which version this project pins and where its c
 
 - `{action: "scout", cause, report_file, notes}`: the cause the diagnosis found, its report, and what the owner said verbatim.
 - The project's dependency pins and its checkout of the training stack.
+- `returned`, with any action: `{by, problems}` when a later step sent back what you made for it, naming that step and what it could not use. Do the action again so those problems are gone, keeping what was right.
 
 ## Steps
 
@@ -35,6 +36,8 @@ What the upstream repository is, which version this project pins and where its c
 
 `{found, source, reference, applies, why, local_change}`: `found` when a matching upstream fix exists; `source` which component and repository; `reference` the issue, pull request or commit, as a reference anyone can open; `applies` whether it applies to the pinned version; `why` the reasoning either way, naming the pinned version and the one it landed in; `local_change` what the change would be in this project.
 
+- Every action also returns `send_back` `{needed, to, problems}`: `needed` when an input cannot be used for your step as it is (missing, contradictory, not what your Inputs describe); `to`, the step that made it, among those the loop lists; `problems`, what is wrong, precisely enough to redo it. Do no work on an input you send back.
+
 ## Writes
 
 Nothing.
@@ -44,3 +47,4 @@ Nothing.
 - A fix it called applicable was applied by `patch-aligner` without turning out to be for another version or another cause.
 - It matched on the cause: no candidate it reported described a different cause with the same message.
 - When it found nothing, it said where it had looked, and a later attempt did not find the fix in a place it claimed to have searched.
+- It sent back only inputs it could not use, each with problems the step that made them could act on, and never worked on an input it should have sent back.

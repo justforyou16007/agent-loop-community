@@ -19,6 +19,7 @@ Where the data is, what prepared it and what its fields mean are the project's: 
 
 - `{action: "validate", round, notes, problems}`: the round, what the owner or the diagnosis said verbatim, and the problems the last round found.
 - `task.md` for what the data must satisfy; the training code for the fields it reads.
+- `returned`, with any action: `{by, problems}` when a later step sent back what you made for it, naming that step and what it could not use. Do the action again so those problems are gone, keeping what was right.
 
 ## Steps
 
@@ -33,6 +34,8 @@ Where the data is, what prepared it and what its fields mean are the project's: 
 
 `{ready, dataset, counts, problems, evidence, report_file}`: `dataset` what was validated; `counts` the numbers per split, one line each; `problems` one line per problem, each naming what the task requires and what the data has; `evidence` how each was found; `report_file` where the report was written.
 
+- Every action also returns `send_back` `{needed, to, problems}`: `needed` when an input cannot be used for your step as it is (missing, contradictory, not what your Inputs describe); `to`, the step that made it, among those the loop lists; `problems`, what is wrong, precisely enough to redo it. Do no work on an input you send back.
+
 ## Writes
 
 Its report under the project's own report path; no data files.
@@ -42,3 +45,4 @@ Its report under the project's own report path; no data files.
 - Data it called ready did not turn out to be the cause of a later failure the checks cover.
 - Every problem it reported reproduced from the evidence it gave.
 - Its counts were over whole splits, not samples.
+- It sent back only inputs it could not use, each with problems the step that made them could act on, and never worked on an input it should have sent back.

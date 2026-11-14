@@ -21,6 +21,7 @@ Where the launch configuration is, which hyperparameters it exposes and what the
 
 - `{action: "plan", cause, report_file, notes}`: what the diagnosis found, its report, and what the owner said verbatim.
 - The run's collected metrics, the project's memory of what was tried, the launch configuration, and `task.md`.
+- `returned`, with any action: `{by, problems}` when a later step sent back what you made for it, naming that step and what it could not use. Do the action again so those problems are gone, keeping what was right.
 
 ## Steps
 
@@ -35,6 +36,8 @@ Where the launch configuration is, which hyperparameters it exposes and what the
 
 `{change, expected, basis, files, needs_image}`: `change` what was changed, from what to what; `expected` what the next run should show, in numbers and by which step; `basis` the curves and the memory it rests on; `files` what was changed; `needs_image` when the change needs a different image, normally false.
 
+- Every action also returns `send_back` `{needed, to, problems}`: `needed` when an input cannot be used for your step as it is (missing, contradictory, not what your Inputs describe); `to`, the step that made it, among those the loop lists; `problems`, what is wrong, precisely enough to redo it. Do no work on an input you send back.
+
 ## Writes
 
 The project's launch configuration; no training code, no data.
@@ -44,3 +47,4 @@ The project's launch configuration; no training code, no data.
 - The next run showed what `expected` said, or `basis` was shown wrong by it.
 - It never repeated a value the memory recorded as tried without saying what was different.
 - It changed one hyperparameter, so the next run could be attributed.
+- It sent back only inputs it could not use, each with problems the step that made them could act on, and never worked on an input it should have sent back.

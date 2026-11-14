@@ -27,6 +27,7 @@ What the project's checkout is, what version it pins, and where the launch confi
 - `report_file`: the diagnosis report.
 - `notes`: what the owner said, verbatim.
 - `params`: this loop's parameter values.
+- `returned`: when the calling loop sent this loop's result back, what it could not use; the first step of its class redoes it.
 
 ## Steps
 
@@ -39,7 +40,11 @@ What the project's checkout is, what version it pins, and where the launch confi
 
 ## Bounds
 
-One change per run of this loop. The small-scale check of the loop above is what proves it, so nothing here runs the training code.
+One change per run of this loop. The small-scale check of the loop above is what proves it, so nothing here runs the training code; at most 2 send-backs in a row by any step.
+
+## Send back
+
+Every step checks what it receives against its role's Inputs. A step that cannot use an input sends it back (`send_back`) to the step that made it, which runs again with `returned` (that step and its problems); then the step runs again on what it makes. Apply may send the upstream fix it was given back to the scout; Record may send the change back to the step that made it (Apply, the scout when nothing was applied, or the tuner). The scout and the tuners may send the diagnosis they were given back to the caller. Past 2 send-backs in a row, or when what a step cannot use is the loop's own input, the loop ends with `sent_back`: the step, where it sent the input, and the problems.
 
 ## Parameters
 

@@ -18,6 +18,7 @@ How to read a run's state, where its log is and how its metrics are reported are
 
 - `{action: "check", run_id, log_file, check}`: the run to read, its log, and which reading this is.
 - The project's own way of listing and reading a run.
+- `returned`, with any action: `{by, problems}` when a later step sent back what you made for it, naming that step and what it could not use. Do the action again so those problems are gone, keeping what was right.
 
 ## Steps
 
@@ -31,6 +32,8 @@ How to read a run's state, where its log is and how its metrics are reported are
 
 `{status, step, rate, loss, errors, note}`: `status` one of `running`, `completed`, `failed`, `stopped`; `step` the last step reached; `rate` and `loss` as the run reports them; `errors` one line per error in the log; `note` what is worth knowing before the next reading, such as a rate that collapsed or a rank that went quiet.
 
+- Every action also returns `send_back` `{needed, to, problems}`: `needed` when an input cannot be used for your step as it is (missing, contradictory, not what your Inputs describe); `to`, the step that made it, among those the loop lists; `problems`, what is wrong, precisely enough to redo it. Do no work on an input you send back.
+
 ## Writes
 
 Nothing.
@@ -40,3 +43,4 @@ Nothing.
 - Its status matched what the run had actually done, in particular never `completed` for a run that died.
 - A stall or a collapsed rate appeared in its `note` while the run was still alive, not only after it failed.
 - It read the run rather than inferring from how long it had been going.
+- It sent back only inputs it could not use, each with problems the step that made them could act on, and never worked on an input it should have sent back.

@@ -48,12 +48,42 @@ const sampleLimit = Number.isInteger(params.sample_limit) ? params.sample_limit 
 const maxRounds = Number.isInteger(params.max_rounds) ? params.max_rounds : 2;
 const candidates = Array.isArray(input.candidates) ? input.candidates : [];
 const runId = input.run_id || "";
+// Send back (the definition's Send back section): a step that cannot use an input names the step that
+// made it (`send_back.to`); that step runs again with `returned`, then the step runs again on what it
+// makes. At most SEND_BACKS times in a row; past that, or for the loop's own input (`caller`), the loop
+// ends with `sent_back`.
+const SEND_BACKS = 2;
+const sending = (schema, to) => ({
+  ...schema,
+  properties: {
+    ...schema.properties,
+    send_back: {
+      type: "object",
+      properties: {
+        needed: { type: "boolean" },
+        to: { type: "string", enum: to },
+        problems: { type: "array", items: { type: "string" } },
+      },
+      required: ["needed", "to", "problems"],
+    },
+  },
+  required: [...schema.required, "send_back"],
+});
+const step = async (name, run, redo = {}) => {
+  for (let returns = 0; ; returns += 1) {
+    const out = await run();
+    const back = out && out.send_back;
+    if (!back || !back.needed) return out;
+    const again = redo[back.to];
+    if (!again || returns >= SEND_BACKS)
+      return { sent_back: { by: name, to: back.to, problems: back.problems } };
+    const remade = await again({ by: name, problems: back.problems });
+    if (remade && (remade.sent_back || remade.waiting)) return remade;
+  }
+};
 
-let benchmarked = null;
-for (let round = 1; round <= maxRounds; round += 1) {
-  // Step 1
-  phase("Benchmark");
-  benchmarked = await agent(
+const bench = (round, back) =>
+  agent(
     JSON.stringify({
       action: "benchmark",
       candidates,
@@ -61,37 +91,78 @@ for (let round = 1; round <= maxRounds; round += 1) {
       sample_limit: sampleLimit,
       run_id: runId,
       round,
+      returned: back,
     }),
-    { agentType: "benchmark-runner", schema: BENCHMARKED, phase: "Benchmark" },
+    { agentType: "benchmark-runner", schema: sending(BENCHMARKED, ["caller"]), phase: "Benchmark" },
   );
+let benchmarked = null;
+for (let round = 1; round <= maxRounds; round += 1) {
+  // Step 1: a result the calling loop sent back is what the first benchmark redoes.
+  phase("Benchmark");
+  benchmarked = await step("benchmark-runner:benchmark", () =>
+    bench(round, round === 1 ? input.returned || null : null),
+  );
+  if (benchmarked.sent_back) return { meets_target: false, sent_back: benchmarked.sent_back };
   // Only a failure that is not the model's is worth running again.
   if (benchmarked.completed || !benchmarked.infrastructure_failure) break;
 }
+const rebench = async (back) => {
+  const again = await step("benchmark-runner:benchmark", () => bench(maxRounds, back));
+  if (!again.sent_back) benchmarked = again;
+  return again;
+};
 
 // Step 2
 phase("Judge");
-const judged = await agent(
-  JSON.stringify({
-    action: "judge",
-    results: benchmarked.results,
-    settings: benchmarked.settings,
-    report_file: benchmarked.report_file,
-    run_id: runId,
-  }),
-  { agentType: "benchmark-judge", schema: JUDGED, phase: "Judge" },
-);
+const judge = (back) =>
+  agent(
+    JSON.stringify({
+      action: "judge",
+      results: benchmarked.results,
+      settings: benchmarked.settings,
+      report_file: benchmarked.report_file,
+      run_id: runId,
+      returned: back,
+    }),
+    {
+      agentType: "benchmark-judge",
+      schema: sending(JUDGED, ["benchmark-runner:benchmark"]),
+      phase: "Judge",
+    },
+  );
+let judged = await step("benchmark-judge:judge", () => judge(null), {
+  "benchmark-runner:benchmark": rebench,
+});
+if (judged.sent_back) return { meets_target: false, sent_back: judged.sent_back };
+const rejudge = async (back) => {
+  const again = await step("benchmark-judge:judge", () => judge(back), {
+    "benchmark-runner:benchmark": rebench,
+  });
+  if (!again.sent_back) judged = again;
+  return again;
+};
 
 // Step 3
 phase("Record");
-await agent(
-  JSON.stringify({
-    action: "record",
-    what: `the benchmark of ${runId}: ${judged.best}`,
-    outcome: judged.meets_target ? "worked" : "failed",
-    evidence: [...benchmarked.results, ...judged.comparison, ...judged.regressions],
-  }),
-  { agentType: "project-memory", schema: RECORDED, phase: "Record" },
+const recorded = await step(
+  "project-memory:record",
+  () =>
+    agent(
+      JSON.stringify({
+        action: "record",
+        what: `the benchmark of ${runId}: ${judged.best}`,
+        outcome: judged.meets_target ? "worked" : "failed",
+        evidence: [...benchmarked.results, ...judged.comparison, ...judged.regressions],
+      }),
+      {
+        agentType: "project-memory",
+        schema: sending(RECORDED, ["benchmark-judge:judge"]),
+        phase: "Record",
+      },
+    ),
+  { "benchmark-judge:judge": rejudge },
 );
+if (recorded.sent_back) return { meets_target: false, sent_back: recorded.sent_back };
 return {
   results: benchmarked.results,
   not_run: benchmarked.not_run,
@@ -102,4 +173,4 @@ return {
   summary: judged.summary,
 };
 
-// contrejour-loop-definition-sha256: 0ca16491bc8d3527b7b43459b529bdcc453e77363fa6a8038b56a940f69e21d7
+// contrejour-loop-definition-sha256: 0328a3d2180f26f55e5b24a476d1c74138fe212462d6119fd03f29eee1f1d56a

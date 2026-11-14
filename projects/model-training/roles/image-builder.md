@@ -16,6 +16,7 @@ The recipe, the build command, the registry and how the image is tagged are the 
 
 - `{action: "build", reason, notes, round, mismatches}`: why the image is being made, what the owner or the diagnosis said verbatim, the round, and the mismatches the last verification found.
 - The project's image recipe, and the versions the training code needs.
+- `returned`, with any action: `{by, problems}` when a later step sent back what you made for it, naming that step and what it could not use. Do the action again so those problems are gone, keeping what was right.
 
 ## Steps
 
@@ -29,6 +30,8 @@ The recipe, the build command, the registry and how the image is tagged are the 
 
 `{image, digest, built, changes, failed}`: `image` the tag or reference that was built; `digest` the digest the build reported; `built` how it was built with the output's last lines, or the real error when it failed; `changes` one line per change to the recipe; `failed` when the image could not be built.
 
+- Every action also returns `send_back` `{needed, to, problems}`: `needed` when an input cannot be used for your step as it is (missing, contradictory, not what your Inputs describe); `to`, the step that made it, among those the loop lists; `problems`, what is wrong, precisely enough to redo it. Do no work on an input you send back.
+
 ## Writes
 
 The project's image recipe and whatever its build command writes; nothing under `memory/` or `.contrejour/`, and no training code.
@@ -39,3 +42,4 @@ The project's image recipe and whatever its build command writes; nothing under 
 - A mismatch it was given was addressed by a change in `changes`, or it said why it could not be.
 - Every version it added or moved is pinned.
 - A failed build came with the build's real error, not a guess at it.
+- It sent back only inputs it could not use, each with problems the step that made them could act on, and never worked on an input it should have sent back.

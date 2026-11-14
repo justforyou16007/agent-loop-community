@@ -19,6 +19,7 @@ Where the checkpoints are, how they are named, which metric the project treats a
 
 - `{action: "select", run_id, log_file, metrics_file, top_k, excluded, round}`: the run, its collected record, how many to pick, what a previous round excluded because it would not load, and the round.
 - `task.md` for what the model is for, and the project's own record of earlier runs.
+- `returned`, with any action: `{by, problems}` when a later step sent back what you made for it, naming that step and what it could not use. Do the action again so those problems are gone, keeping what was right.
 
 ## Steps
 
@@ -32,6 +33,8 @@ Where the checkpoints are, how they are named, which metric the project treats a
 
 `{candidates, basis, excluded}`: `candidates` the checkpoints to benchmark, named as the project names them; `basis` one line per candidate saying what the metrics show about that step; `excluded` one line per checkpoint ruled out, with why.
 
+- Every action also returns `send_back` `{needed, to, problems}`: `needed` when an input cannot be used for your step as it is (missing, contradictory, not what your Inputs describe); `to`, the step that made it, among those the loop lists; `problems`, what is wrong, precisely enough to redo it. Do no work on an input you send back.
+
 ## Writes
 
 Nothing.
@@ -41,3 +44,4 @@ Nothing.
 - The candidate it ranked first was the one the benchmark found best, or its basis said what the metrics could not settle.
 - Every candidate was a checkpoint the run actually wrote, and none was in `excluded`.
 - Its candidates differed in what they showed, rather than being neighbouring steps on a flat curve.
+- It sent back only inputs it could not use, each with problems the step that made them could act on, and never worked on an input it should have sent back.

@@ -20,6 +20,7 @@ The entry point, the scale that counts as small here and how a run is launched a
 
 - `notes`: what the owner, the last diagnosis or the last fix said, verbatim.
 - `params`: this loop's parameter values.
+- `returned`: when the calling loop sent this loop's result back, what it could not use; the first run redoes it.
 
 ## Steps
 
@@ -29,7 +30,11 @@ The entry point, the scale that counts as small here and how a run is launched a
 
 ## Bounds
 
-At most `max_rounds` runs.
+At most `max_rounds` runs; at most 2 send-backs in a row by any step.
+
+## Send back
+
+Every step checks what it receives against its role's Inputs. A step that cannot use an input sends it back (`send_back`) to the step that made it, which runs again with `returned` (that step and its problems); then the step runs again on what it makes. Record may send the run's report back to Run, which runs again. Run may send the notes back to the caller. When the calling loop sends this loop's result back, the first run gets its `returned`. Past 2 send-backs in a row, or when what a step cannot use is the loop's own input, the loop ends with `sent_back`: the step, where it sent the input, and the problems.
 
 ## Parameters
 

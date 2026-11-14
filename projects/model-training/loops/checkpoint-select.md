@@ -23,6 +23,7 @@ Where the checkpoints are, how they are named and how one is loaded are the proj
 - `run_id`: the finished run, or empty for the project's most recent one.
 - `log_file`, `metrics_file`: what the run left, when the caller already knows them.
 - `params`: this loop's parameter values.
+- `returned`: when the calling loop sent this loop's result back, what it could not use; the first selection redoes it.
 
 ## Steps
 
@@ -32,7 +33,11 @@ Where the checkpoints are, how they are named and how one is loaded are the proj
 
 ## Bounds
 
-At most `max_rounds` rounds of selection and loading.
+At most `max_rounds` rounds of selection and loading; at most 2 send-backs in a row by any step.
+
+## Send back
+
+Every step checks what it receives against its role's Inputs. A step that cannot use an input sends it back (`send_back`) to the step that made it, which runs again with `returned` (that step and its problems); then the step runs again on what it makes. Check may send the candidates back to Select; Record may send the check back to Check. Select may send the run it was given back to the caller. Past 2 send-backs in a row, or when what a step cannot use is the loop's own input, the loop ends with `sent_back`: the step, where it sent the input, and the problems.
 
 ## Parameters
 

@@ -18,6 +18,7 @@ The launcher, the configuration, how runs are named, where logs and checkpoints 
 
 - `{action: "launch", notes}`: what the owner, the diagnosis or the last fix said verbatim.
 - The project's launch configuration, the verified image and the validated data.
+- `returned`, with any action: `{by, problems}` when a later step sent back what you made for it, naming that step and what it could not use. Do the action again so those problems are gone, keeping what was right.
 
 ## Steps
 
@@ -31,6 +32,8 @@ The launcher, the configuration, how runs are named, where logs and checkpoints 
 
 `{launched, already_running, run_id, log_file, checkpoints_dir, failed, why}`: `launched` when a run was started; `already_running` when one was already going and is being reported instead; `run_id` its name; `log_file` and `checkpoints_dir` where it writes; `failed` when it could not be launched, with the real error in `why`.
 
+- Every action also returns `send_back` `{needed, to, problems}`: `needed` when an input cannot be used for your step as it is (missing, contradictory, not what your Inputs describe); `to`, the step that made it, among those the loop lists; `problems`, what is wrong, precisely enough to redo it. Do no work on an input you send back.
+
 ## Writes
 
 Nothing of its own beyond what the launcher writes; no configuration, no training code.
@@ -40,3 +43,4 @@ Nothing of its own beyond what the launcher writes; no configuration, no trainin
 - It never started a second run of a configuration that was already going.
 - A run it reported launched was there, under that name, when `run-watcher` looked.
 - It launched what the configuration said, at the configured scale, or reported a failure instead of reducing it.
+- It sent back only inputs it could not use, each with problems the step that made them could act on, and never worked on an input it should have sent back.
